@@ -1,28 +1,40 @@
-import { execute, parse } from "graphql";
+import fastify from "fastify";
+import { getGraphQLParameters, processRequest, Request, sendResult } from "graphql-helix";
 import 'graphql-import-node';
 import { schema } from "./schema";
 
 async function main() {
-  const myQuery = parse(`query {
-  feed {
-    id
-    url
-    description
-  }
-}`); // ✅ Fixed query parsing
+  const server = fastify();
 
-  const result = await execute({
-    schema,
-    document: myQuery,
+  server.route({
+    method: "POST",
+    url: "/graphql",
+    handler: async (req, reply) => {
+      const request: Request = {
+        headers: req.headers,
+        method: req.method,
+        query: req.query,
+        body: req.body,
+      };
+
+      const { operationName, query, variables } = getGraphQLParameters(request);
+
+      const result = await processRequest({
+        request,
+        schema,
+        operationName,
+        query,
+        variables,
+      });
+
+      sendResult(result, reply.raw);
+    }
   });
 
-  // Convert to a normal object to remove "[Object: null prototype]"
-  // const normalizedResult = JSON.parse(JSON.stringify(result));
-
-  // console.log(normalizedResult); // ✅ Should now show { data: { info: 'Test' } }
-
-  console.log(JSON.stringify(result, null, 2));
+  server.listen({ port: 3000, host: "0.0.0.0" }, () => {
+    console.log("Server is running on http://localhost:3000/");
+  });
+  
 }
-
 
 main();
