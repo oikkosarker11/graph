@@ -7,7 +7,7 @@ const fastify = require('fastify');
 const { getGraphQLParameters, processRequest, renderGraphiQL, Request, sendResult, shouldRenderGraphiQL } = require('graphql-helix');
 require('graphql-import-node');
 const schema = require('./schema');
-const connectDB = require('./context');
+const {contextFactory, connectDB} = require('./context');
 
 
 async function main() {
@@ -40,6 +40,9 @@ async function main() {
         schema,
         operationName,
         connectDB,
+        contextFactory: function() {
+          return contextFactory(req);
+        },
         query,
         variables,
       });
