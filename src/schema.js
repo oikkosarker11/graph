@@ -31,28 +31,6 @@ const resolvers = {
   },
 
   Mutation: {
-    post: async (parent, args, context) => {
-      if (!context.currentUser) {
-        throw new Error("Unauthenticated!");
-      }
-
-      try {
-        // Create a new link (post)
-        const newLink = new Link({
-          url: args.url,
-          description: args.description,
-          postedBy: context.currentUser.id, // Assuming currentUser has an 'id' field
-        });
-
-        // Save the new link to the database
-        await newLink.save();
-
-        return newLink; // Return the newly created link
-      } catch (error) {
-        throw new Error("Failed to create post");
-      }
-    },
-
     signup: async (parent, args, context) => {
       try {
         // 1. Hash the password
@@ -105,32 +83,63 @@ const resolvers = {
         throw new Error("Error logging in: " + error.message);
       }
     },
+    post: async (parent, args, context) => {
+      if (!context.currentUser) {
+        throw new Error("Unauthenticated!");
+      }
+
+      try {
+        // Create a new link (post)
+        const newLink = new Link({
+          url: args.url,
+          description: args.description,
+          postedBy: context.currentUser.id, // Assuming currentUser has an 'id' field
+        });
+
+        // Save the new link to the database
+        await newLink.save();
+        const addLink = await User.findByIdAndUpdate(
+          { _id: context.currentUser.id },
+          { $push: { links: newLink.id } },
+          { new: true },
+      );
+        return newLink; // Return the newly created link
+      } catch (error) {
+        throw new Error("Failed to create post");
+      }
+    },
   },
 
   Link: {
-    id: (parent) => parent.id,
-    description: (parent) => parent.description,
-    url: (parent) => parent.url,
+    // id: (parent) => parent.id,
+    // description: (parent) => parent.description,
+    // url: (parent) => parent.url,
     postedBy: async (parent, args, context) => {
-      if (!parent.postedById) {
+      if (!parent.postedBy) {
         return null;
       }
 
       try {
         // Assuming parent.postedById refers to the user who posted the link
-        const user = await User.findById(parent.postedById);
+        const user = await User.findById(parent.postedBy);
         return user; // Return the user who posted the link
       } catch (error) {
         throw new Error("Error fetching the user who posted the link");
       }
     },
   },
-
+  // AuthPayLoad:{
+  //   token: (parent) => parent.token, 
+  //   user: (parent) => parent.user
+  // },
   User: {
+    id: (parent) => parent.id,
+    name: (parent) => parent.name,
+    email: (parent) => parent.email,
     links: async (parent, args, context) => {
       try {
         // Assuming parent.id refers to the ID of the user
-        const links = await Link.find({ postedById: parent.id }); // Querying links posted by the user
+        const links = await Link.find({ postedBy: parent.id }); // Querying links posted by the user
         return links;
       } catch (error) {
         throw new Error("Error fetching links for user");

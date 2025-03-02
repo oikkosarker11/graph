@@ -39,7 +39,6 @@ async function main() {
         request,
         schema,
         operationName,
-        connectDB,
         contextFactory: function() {
           return contextFactory(req);
         },
