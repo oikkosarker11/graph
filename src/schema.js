@@ -1,16 +1,50 @@
 const mongoose = require('mongoose');
 const { makeExecutableSchema } = require('@graphql-tools/schema');
 const typeDefs = require('./schema.graphql');
-const { Link, User } = require('./mongoSchema');
+const { Link, User, Vote } = require('./mongoSchema');
 const { APP_SECRET } = require("./auth");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const pubSub = require('./pubsub')
 
 const resolvers = {
   Query: {
     info: () => `This is the API of a Hackernews Clone`,
-    feed: async () => {
-      return await Link.find();
+    feed: async (parent, args, context) => {
+      const { filter, skip, take, orderBy } = args;
+
+      // Create a filter condition for Mongoose
+      const where = filter
+        ? {
+            $or: [
+              { description: { $regex: filter, $options: "i" } }, // Case-insensitive search
+              { url: { $regex: filter, $options: "i" } },
+            ],
+          }
+        : {};
+
+      // Convert Prisma's SortOrder to Mongoose sort object
+      let sortOptions = {};
+      if (orderBy) {
+        sortOptions = Object.fromEntries(
+          Object.entries(orderBy).map(([key, value]) => [key, value === "asc" ? 1 : -1])
+        );
+      }
+
+
+      // Find matching links with pagination and sorting
+      const links = await Link.find(where)
+        .skip(skip || 0)
+        .limit(take || 10)
+        .sort(sortOptions);
+
+              // Count total documents matching the filter
+      const totalCount = links.length;
+
+      return {
+        count: totalCount,
+        links,
+      };
     },
     me: async (parent, args, context) => {
       if (context.currentUser === null) {
@@ -103,10 +137,44 @@ const resolvers = {
           { $push: { links: newLink.id } },
           { new: true },
       );
+      context.pubSub.publish("newLink", { createdLink: newLink });
         return newLink; // Return the newly created link
       } catch (error) {
-        throw new Error("Failed to create post");
+        throw new Error("Failed to create post: " + error.message);
       }
+    },
+    vote : async (parent, args, context) => {
+      // 1: Check if the user is authenticated
+      if (!context.currentUser) {
+        throw new AuthenticationError("You must log in to upvote!");
+      }
+    
+      const userId = context.currentUser.id;
+      const linkId = args.linkId;
+    
+      // 2: Check if the user has already voted
+      const existingVote = await Vote.findOne({ user: userId, link: linkId });
+      if (existingVote) {
+        throw new Error(`Already voted for link: ${linkId}`);
+      }
+    
+      // 3: Create a new vote
+      const newVote = await Vote.create({ user: userId, link: linkId });
+
+      const addVoteUser = await User.findByIdAndUpdate(
+        { _id: userId },
+        { $push: { votes: newVote.id } },
+        { new: true },
+    );
+    const addVoteLink = await Link.findByIdAndUpdate(
+      { _id: linkId },
+      { $push: { votes: newVote.id } },
+      { new: true },
+  );
+      // 4: Publish the vote event
+      context.pubSub.publish("newVote", { createdVote: newVote });
+    
+      return newVote;
     },
   },
 
@@ -127,6 +195,9 @@ const resolvers = {
         throw new Error("Error fetching the user who posted the link");
       }
     },
+    votes: async (parent, args, context) => {
+      return await Vote.find({ link: parent.id });
+    },
   },
   // AuthPayLoad:{
   //   token: (parent) => parent.token, 
@@ -144,6 +215,35 @@ const resolvers = {
       } catch (error) {
         throw new Error("Error fetching links for user");
       }
+    },
+    votes: async (parent, args, context) => {
+      return await Vote.find({ user: parent.id });
+    },
+  },
+  Subscription: {
+    newLink: {
+      subscribe: (parent, args, context) => {
+        return context.pubSub.asyncIterator("newLink");
+      },
+      resolve: (payload) => {
+        return payload.createdLink;
+      },
+    },
+    newVote : {
+      subscribe: (parent, args, context) => {
+        return context.pubSub.asyncIterator("newVote");
+      },
+      resolve: (payload) => {
+        return payload.createdVote;
+      },
+    },
+  },
+  Vote : {
+    link: async (parent, args, context) => {
+      return await Link.findById(parent.link);
+    },
+    user: async (parent, args, context) => {
+      return await User.findById(parent.user);
     },
   },
 };

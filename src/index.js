@@ -45,8 +45,37 @@ async function main() {
         query,
         variables,
       });
-
-      reply.send(result);
+      if (result.type === "RESPONSE") {
+        reply.send(result.payload);
+      } 
+      // Subscription response using SSE
+      else if (result.type === "PUSH") {
+        // Set up SSE headers
+        reply.raw.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Connection": "keep-alive",
+          "Cache-Control": "no-cache",
+        });
+      
+        // Call subscribe with callbacks directly instead of an object
+        result.subscribe(
+          (data) => {
+            // Called when a new event is ready
+            reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+          },
+          (error) => {
+            // Called if there's an error
+            reply.raw.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+          },
+          () => {
+            // Called when subscription is complete
+            reply.raw.end();
+          }
+        );
+      }else {
+        reply.send(result);
+      }
+      // reply.send(result);
     },
   });
 

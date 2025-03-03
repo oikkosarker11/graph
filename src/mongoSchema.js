@@ -17,7 +17,11 @@ const linkSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null
-  }
+  },
+  votes: [{ 
+    type: mongoose.Schema.Types.ObjectId,
+     ref: 'Vote'
+   }],
 });
 
 const userSchema = new mongoose.Schema({
@@ -37,9 +41,29 @@ const userSchema = new mongoose.Schema({
   links: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Link'
-  }]
+  }],
+  votes: [{ 
+    type: mongoose.Schema.Types.ObjectId,
+     ref: 'Vote'
+   }],
 });
+
+const voteSchema = new mongoose.Schema({
+  link: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Link', required: true },
+  user: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', required: true },
+  },
+ {
+  timestamps: true,
+  index: 
+  { unique: true, 
+    fields: { link: 1, user: 1 } },
+  });
 const Link = mongoose.model('Link', linkSchema, 'myLink');
 const User = mongoose.model('User', userSchema, 'myUser');
+const Vote = mongoose.model('Vote', voteSchema, 'myVote');
 
-module.exports = { Link, User };
+module.exports = { Link, User, Vote };
